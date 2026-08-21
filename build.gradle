@@ -14,7 +14,8 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.example.ExamplePluginTest'
+// 1. Updated the main test class to match your new package and plugin name
+def pluginMainClass = 'com.alecsherlock.discordloot.DiscordLootPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -27,11 +28,14 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.example'
+// 2. Updated the group to match your package structure
+group = 'com.alecsherlock.discordloot'
+// 3. Set a version for your plugin (optional but good practice)
+version = '1.0-SNAPSHOT'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
-	options.release.set(11)
+	options.release.set(11) // Keep this at 11 for RuneLite
 }
 
 tasks.register('run', JavaExec) {
