@@ -97,7 +97,7 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
     {
         final NPC npc = event.getNpc();
         final String sourceName = npc != null ? npc.getName() : "Unknown NPC";
-        handleLoot(sourceName, event.getItems());
+        handleLoot(sourceName, event.getItems(), false);
     }
 
     @net.runelite.client.eventbus.Subscribe
@@ -109,10 +109,10 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
         }
         final Player player = event.getPlayer();
         final String sourceName = player != null ? player.getName() : "Unknown Player";
-        handleLoot(sourceName, event.getItems());
+        handleLoot(sourceName, event.getItems(), true);
     }
 
-    private void handleLoot(String sourceName, Collection<ItemStack> items)
+    private void handleLoot(String sourceName, Collection<ItemStack> items, boolean isPvp)
     {
         if (items == null || items.isEmpty())
         {
@@ -123,6 +123,7 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
         final Set<Integer> rareFilter = parseItemIds(config.rareItemIds());
         final List<DropItem> drops = new ArrayList<>();
         int totalGe = 0;
+
         for (ItemStack stack : items)
         {
             final int id = stack.getId();
@@ -130,7 +131,19 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
             final int canonicalId = itemManager.canonicalize(id);
             final ItemComposition comp = itemManager.getItemComposition(id);
             final String name = comp != null ? comp.getName() : "Unknown item";
-            final int ge = itemManager.getItemPrice(id) * qty;
+
+            // Robust price calculation: Check GE, fallback to canonical GE, fallback to store price
+            int price = itemManager.getItemPrice(id);
+            if (price <= 0)
+            {
+                price = itemManager.getItemPrice(canonicalId);
+            }
+            if (price <= 0 && comp != null)
+            {
+                price = comp.getPrice();
+            }
+
+            final int ge = price * qty;
             totalGe += ge;
             drops.add(new DropItem(id, canonicalId, name, qty, ge));
         }
@@ -138,7 +151,9 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
         final boolean matchesIdFilter = rareFilter.isEmpty()
                 || drops.stream().anyMatch(d -> rareFilter.contains(d.itemId) || rareFilter.contains(d.canonicalItemId));
         final boolean matchesValueFilter = config.minGeValue() <= 0 || totalGe >= config.minGeValue();
-        if (!matchesIdFilter || !matchesValueFilter)
+
+        // If it's a PvP kill, we bypass the GE value and Item ID filters entirely.
+        if (!isPvp && (!matchesIdFilter || !matchesValueFilter))
         {
             return;
         }
@@ -150,6 +165,7 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
         job.includeInventoryList = config.includeInventoryList();
         job.includeScreenshot = config.includeScreenshot();
         job.renderEquipmentImage = config.renderEquipmentImage();
+        job.isPvp = isPvp;
 
         // Grab the local player's username safely on the client thread
         Player localPlayer = client.getLocalPlayer();
@@ -372,9 +388,11 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
     private String buildPayload(String sourceName, List<DropItem> drops, int totalGe, EquipmentSnapshot equipment, InventorySnapshot inventory, WebhookJob job)
     {
         final StringBuilder sb = new StringBuilder();
-        sb.append("{\"content\":\"**Rare drop** from ").append(escape(sourceName)).append("\",");
+        final String contentPrefix = job.isPvp ? "**PvP kill:** " : "**Rare drop** from ";
+
+        sb.append("{\"content\":\"").append(contentPrefix).append(escape(sourceName)).append("\",");
         sb.append("\"embeds\":[{");
-        sb.append("\"title\":\"Loot Notification\",");
+        sb.append("\"title\":\"").append(job.isPvp ? "PvP Notification" : "Loot Notification").append("\",");
         sb.append("\"color\":16753920,");
 
         final StringBuilder desc = new StringBuilder();
@@ -688,5 +706,6 @@ public class DiscordLootPlugin extends net.runelite.client.plugins.Plugin
         boolean includeInventoryList;
         boolean includeScreenshot;
         boolean renderEquipmentImage;
+        boolean isPvp;
     }
 }
